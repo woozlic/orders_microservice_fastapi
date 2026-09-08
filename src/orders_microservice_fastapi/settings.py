@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     kafka_bootstrap_servers: str
 
+    jwt_secret: str
+    jwt_ttl_minutes: int = 30
+
     @property
     def database_url(self) -> str:
         return (
