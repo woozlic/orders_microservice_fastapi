@@ -1,8 +1,8 @@
 from celery import Celery
-from .settings import settings
+from orders_microservice_fastapi.settings import settings
 
 celery = Celery(
-    "app",
+    "orders_microservice_fastapi",
     broker=settings.redis_url,
     backend=f"redis://{settings.redis_host}:{settings.redis_port}/1",
 )
@@ -16,3 +16,5 @@ celery.conf.update(
 @celery.task(name="ping")
 def ping() -> str:
     return "pong"
+
+from orders_microservice_fastapi import tasks  # noqa: E402,F401

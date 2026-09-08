@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
-from app.settings import settings
+from orders_microservice_fastapi.settings import settings
 
 
 def hash_password(raw: str) -> str:

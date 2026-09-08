@@ -4,12 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.cache import cache_order, get_cached_order, invalidate_order
-from app.db import get_session
-from app.deps import get_current_user
-from app.models import Order, OrderStatus, User
-from app.schemas import OrderCreate, OrderOut, OrderStatusUpdate
-from app.worker import celery
+from orders_microservice_fastapi.cache import cache_order, get_cached_order, invalidate_order
+from orders_microservice_fastapi.db import get_session
+from orders_microservice_fastapi.deps import get_current_user
+from orders_microservice_fastapi.models import Order, OrderStatus, User
+from orders_microservice_fastapi.schemas import OrderCreate, OrderOut, OrderStatusUpdate
+from orders_microservice_fastapi.worker import celery
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -83,8 +83,10 @@ async def update_status(
     order.status = payload.status
     await session.commit()
     await session.refresh(order)
-    await invalidate_order(order_id)
-    return order
+
+    data = OrderOut.model_validate(order)
+    await cache_order(data.model_dump(mode="json"))
+    return data
 
 
 @router.get("/user/{user_id}/", response_model=list[OrderOut])

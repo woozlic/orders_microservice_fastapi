@@ -4,4 +4,5 @@ WORKDIR /code
 RUN pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock* ./
 RUN uv pip install --system -r pyproject.toml
-COPY src/orders_microservice_fastapi ./app
+COPY src/ ./src/
+ENV PYTHONPATH=/code/src
