@@ -4,24 +4,38 @@ x-app: &app
   depends_on:
     postgres: {condition: service_healthy}
     redis: {condition: service_healthy}
-    kafka: {condition: service_healthy}
+    kafka-init: {condition: service_completed_successfully}
   volumes:
     - ./src/orders_microservice_fastapi:/code/src/orders_microservice_fastapi
 
 services:
+  # Применяет миграции Alembic перед стартом API.
+  migrate:
+    <<: *app
+    command: alembic upgrade head
+    restart: "no"
+
   api:
     <<: *app
     command: uvicorn orders_microservice_fastapi.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "${APP_PORT}:8000"
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      kafka-init: {condition: service_completed_successfully}
+      migrate: {condition: service_completed_successfully}
 
+  # Читает события new_order из Kafka и ставит задачи в Celery.
+  consumer:
+    <<: *app
+    command: python -m orders_microservice_fastapi.consumer
+    restart: unless-stopped
+
+  # Celery используется только для фоновых задач (брокер — Redis).
   worker:
     <<: *app
     command: celery -A orders_microservice_fastapi.worker.celery worker -l ${LOG_LEVEL} -Q default
-
-  beat:
-    <<: *app
-    command: celery -A orders_microservice_fastapi.worker.celery beat -l ${LOG_LEVEL}
 
   postgres:
     image: postgres:16-alpine
@@ -46,11 +60,6 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       retries: 10
-
-  consumer:
-    <<: *app
-    command: python -m orders_microservice_fastapi.consumer
-    restart: unless-stopped
 
   kafka:
     image: apache/kafka:3.9.0
@@ -79,6 +88,20 @@ services:
       test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1" ]
       interval: 10s
       retries: 15
+
+  # Автосоздание топиков выключено, поэтому топик заказов создаём явно.
+  kafka-init:
+    image: apache/kafka:3.9.0
+    env_file: .env
+    depends_on:
+      kafka: {condition: service_healthy}
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092
+        --create --if-not-exists --topic $${KAFKA_TOPIC_ORDERS:-orders}
+        --partitions 3 --replication-factor 1
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest

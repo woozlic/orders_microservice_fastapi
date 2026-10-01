@@ -1,2 +1,1 @@
-def main() -> None:
-    print("Hello from orders-microservice-fastapi!")
+"""Сервис управления заказами на FastAPI."""

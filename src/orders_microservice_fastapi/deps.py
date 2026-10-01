@@ -7,7 +7,7 @@ from .db import get_session
 from .models import User
 from .security import decode_token
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token/")
 
 
 async def get_current_user(

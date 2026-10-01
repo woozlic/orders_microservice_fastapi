@@ -1,5 +1,4 @@
 import asyncio
-import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -7,7 +6,6 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-import environs
 from orders_microservice_fastapi.models import Base
 from orders_microservice_fastapi.settings import settings
 
@@ -24,9 +22,8 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-env = environs.Env()
-env.read_env()
-config.set_main_option("sqlalchemy.url", env('DATABASE_URL'))
+# "%" нужно экранировать: configparser использует его для интерполяции
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,

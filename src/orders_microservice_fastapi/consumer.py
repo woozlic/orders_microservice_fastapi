@@ -1,3 +1,4 @@
+"""Kafka consumer: читает события `new_order` и запускает фоновую задачу в Celery."""
 import asyncio
 import json
 import logging
@@ -5,18 +6,15 @@ import signal
 
 from aiokafka import AIOKafkaConsumer
 
-from orders_microservice_fastapi.settings import settings
-from orders_microservice_fastapi.worker import celery
+from .settings import settings
+from .worker import celery
 
 log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-
-TOPIC_ORDERS = "orders"
 
 
 async def run() -> None:
     consumer = AIOKafkaConsumer(
-        TOPIC_ORDERS,
+        settings.kafka_topic_orders,
         bootstrap_servers=settings.kafka_bootstrap_servers,
         group_id="orders-bridge",
         enable_auto_commit=False,
@@ -35,23 +33,7 @@ async def run() -> None:
             batch = await consumer.getmany(timeout_ms=1000, max_records=100)
             for tp, messages in batch.items():
                 for msg in messages:
-                    try:
-                        payload = json.loads(msg.value)
-                    except json.JSONDecodeError:
-                        log.exception("bad payload at %s:%s", tp, msg.offset)
-                        continue
-
-                    if payload.get("event") != "new_order":
-                        continue
-
-                    event_id = f"{tp.topic}:{tp.partition}:{msg.offset}"
-                    await asyncio.to_thread(
-                        celery.send_task,
-                        "process_order",
-                        kwargs={"order_id": payload["order_id"], "event_id": event_id},
-                        queue="default",
-                    )
-                    log.info("enqueued order %s", payload["order_id"])
+                    await handle_message(tp.topic, tp.partition, msg)
 
             if batch:
                 await consumer.commit()
@@ -59,5 +41,27 @@ async def run() -> None:
         await consumer.stop()
 
 
+async def handle_message(topic: str, partition: int, msg) -> None:
+    """Обработать одно сообщение; некорректные пропускаем, чтобы не блокировать партицию."""
+    try:
+        payload = json.loads(msg.value)
+    except json.JSONDecodeError:
+        log.exception("bad payload at %s:%s:%s", topic, partition, msg.offset)
+        return
+
+    if payload.get("event") != "new_order" or "order_id" not in payload:
+        return
+
+    event_id = f"{topic}:{partition}:{msg.offset}"
+    await asyncio.to_thread(
+        celery.send_task,
+        "process_order",
+        kwargs={"order_id": payload["order_id"], "event_id": event_id},
+        queue="default",
+    )
+    log.info("enqueued order %s", payload["order_id"])
+
+
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(run())

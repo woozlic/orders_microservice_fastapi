@@ -1,9 +1,9 @@
+"""Публикация событий заказов в Kafka (event-bus)."""
 import json
+
 from aiokafka import AIOKafkaProducer
 
-from orders_microservice_fastapi.settings import settings
-
-TOPIC_ORDERS = "orders"
+from .settings import settings
 
 _producer: AIOKafkaProducer | None = None
 
@@ -20,13 +20,18 @@ async def start_producer() -> None:
 
 
 async def stop_producer() -> None:
+    global _producer
     if _producer:
         await _producer.stop()
+        _producer = None
 
 
 async def publish_new_order(order) -> None:
+    """Опубликовать событие `new_order` для созданного заказа."""
+    if _producer is None:
+        raise RuntimeError("Kafka producer is not started")
     await _producer.send_and_wait(
-        TOPIC_ORDERS,
+        settings.kafka_topic_orders,
         key=str(order.user_id).encode(),
         value={
             "event": "new_order",
